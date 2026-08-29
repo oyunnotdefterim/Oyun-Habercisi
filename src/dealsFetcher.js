@@ -9,9 +9,14 @@ async function resolveShopIds(apiKey, shopNames) {
   if (!res.ok) throw new Error(`Mağaza listesi alınamadı: ${res.status}`);
   const shops = await res.json();
 
+  // ITAD bazı sürümlerde "title", bazılarında "name" alanı kullanıyor —
+  // ikisini de destekliyoruz, ayrıca eksik/bozuk kayıtları sessizce atlıyoruz.
   const found = {};
   for (const wanted of shopNames) {
-    const match = shops.find((s) => s.name.toLowerCase() === wanted.toLowerCase());
+    const match = shops.find((s) => {
+      const label = s.title || s.name;
+      return label && label.toLowerCase() === wanted.toLowerCase();
+    });
     if (match) found[wanted] = match.id;
   }
   return found;
