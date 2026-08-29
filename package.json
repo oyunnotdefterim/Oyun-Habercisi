@@ -1,0 +1,12 @@
+{
+  "name": "steam-deal-bot",
+  "version": "2.0.0",
+  "description": "Steam ve PS Store'daki tüm indirimleri tarar, Telegram üzerinden haber verir.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
