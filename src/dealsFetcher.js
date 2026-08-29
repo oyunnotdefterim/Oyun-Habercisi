@@ -65,7 +65,7 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
   // indirimdeki tanınmış oyunları (ör. Hogwarts Legacy) dışarıda bırakabiliyor.
   // Bu yüzden birkaç sayfa art arda çekiyoruz.
   const PAGE_SIZE = 200;
-  const MAX_PAGES = 3; // toplamda en fazla 600 sonuç
+  const MAX_PAGES = 10; // toplamda en fazla 600 sonuç
   const url = `${ITAD_BASE}/deals/v2?key=${apiKey}`;
 
   let list = [];
