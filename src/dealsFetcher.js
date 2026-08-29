@@ -35,10 +35,22 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
     [shopIds["Steam"]]: "Steam",
     [shopIds["PlayStation Store"]]: "PS Store",
   };
-  const shopsParam = Object.values(shopIds).filter(Boolean).join(",");
+  const shopIdList = Object.values(shopIds).filter(Boolean);
 
-  const url = `${ITAD_BASE}/deals/v2?key=${apiKey}&shops=${shopsParam}&limit=100&sort=-cut`;
-  const res = await fetch(url);
+  // /deals/v2 GET isteğinde query parametrelerini desteklemiyor (400 döner) —
+  // ITAD bu endpoint için POST + JSON gövde istiyor.
+  const url = `${ITAD_BASE}/deals/v2?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      country: "US",
+      offset: 0,
+      limit: 100,
+      sort: "-cut",
+      shops: shopIdList,
+    }),
+  });
   if (!res.ok) throw new Error(`ITAD API hatası: ${res.status} ${res.statusText}`);
 
   const data = await res.json();
