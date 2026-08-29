@@ -60,22 +60,35 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
 
   // /deals/v2 GET isteğinde query parametrelerini desteklemiyor (400 döner) —
   // ITAD bu endpoint için POST + JSON gövde istiyor.
+  // Tek sayfa (limit=100) yeterli olmuyor: yüksek yüzdeli küçük/az bilinen
+  // oyunlar ilk 100'ü doldurup, %90 gibi daha "makul" ama yine de büyük
+  // indirimdeki tanınmış oyunları (ör. Hogwarts Legacy) dışarıda bırakabiliyor.
+  // Bu yüzden birkaç sayfa art arda çekiyoruz.
+  const PAGE_SIZE = 200;
+  const MAX_PAGES = 3; // toplamda en fazla 600 sonuç
   const url = `${ITAD_BASE}/deals/v2?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      country: "US",
-      offset: 0,
-      limit: 100,
-      sort: "-cut",
-      shops: shopIdList,
-    }),
-  });
-  if (!res.ok) throw new Error(`ITAD API hatası: ${res.status} ${res.statusText}`);
 
-  const data = await res.json();
-  const list = data.list || data.deals || [];
+  let list = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        country: "US",
+        offset: page * PAGE_SIZE,
+        limit: PAGE_SIZE,
+        sort: "-cut",
+        shops: shopIdList,
+      }),
+    });
+    if (!res.ok) throw new Error(`ITAD API hatası: ${res.status} ${res.statusText}`);
+
+    const data = await res.json();
+    const pageList = data.list || data.deals || [];
+    list = list.concat(pageList);
+
+    if (pageList.length < PAGE_SIZE) break; // son sayfaya ulaştık
+  }
 
   const filtered = list.filter((deal) => (deal.deal?.cut ?? deal.cut ?? 0) >= minDiscountPercent);
 
