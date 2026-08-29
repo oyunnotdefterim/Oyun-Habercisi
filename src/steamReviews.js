@@ -3,17 +3,13 @@ import fetch from "node-fetch";
 // Sadece bu ikisi "geçer" sayılacak (Steam'in Türkçe arayüzündeki karşılıkları):
 // "Very Positive"  -> Çok Olumlu
 // "Positive"        -> Olumlu
-// (Not: "Mostly Positive" / Genel Olarak Olumlu ve "Overwhelmingly Positive" /
-// Şaşırtıcı Derecede Olumlu dahil EDİLMİYOR — istersen bunları da eklerim.)
 const ALLOWED_SCORES = new Set(["Very Positive", "Positive"]);
 
 const cache = new Map();
 
-export function extractSteamAppId(storeUrl) {
-  if (!storeUrl) return null;
-  const match = storeUrl.match(/\/app\/(\d+)/);
-  return match ? match[1] : null;
-}
+// Not: appid artık dealsFetcher.js tarafından ITAD'ın lookup endpoint'i
+// üzerinden önceden çözümlenip deal.appid alanına konuyor (storeUrl, ITAD'ın
+// kendi kısaltma linki olduğu için oradan appid çıkarmak güvenilir değildi).
 
 async function fetchReviewScoreDesc(appid) {
   if (cache.has(appid)) return cache.get(appid);
@@ -34,8 +30,6 @@ async function fetchReviewScoreDesc(appid) {
  * Verilen deal listesindeki Steam öğelerini inceleme puanına göre filtreler
  * (sadece "Positive" / "Very Positive" geçer). Steam DIŞINDAKİ (örn. PS Store)
  * öğeler dokunulmadan olduğu gibi geri döner.
- * Küçük bir eşzamanlılık limitiyle çalışır ki Steam'in public endpoint'i
- * aşırı yüklenmesin.
  */
 export async function filterSteamDealsByReview(deals, { concurrency = 5 } = {}) {
   const steamDeals = deals.filter((d) => d.platform === "Steam");
@@ -46,8 +40,8 @@ export async function filterSteamDealsByReview(deals, { concurrency = 5 } = {}) 
     const batch = steamDeals.slice(i, i + concurrency);
     const batchResults = await Promise.all(
       batch.map(async (deal) => {
-        const appid = extractSteamAppId(deal.storeUrl);
-        if (!appid) return null; // appid çıkaramadıysak güvenli tarafta kal, dahil etme
+        const appid = deal.appid;
+        if (!appid) return null; // appid çözümlenemediyse güvenli tarafta kal, dahil etme
         const scoreDesc = await fetchReviewScoreDesc(appid);
         return ALLOWED_SCORES.has(scoreDesc) ? deal : null;
       })

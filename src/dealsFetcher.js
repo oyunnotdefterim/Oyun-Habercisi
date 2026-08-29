@@ -9,8 +9,6 @@ async function resolveShopIds(apiKey, shopNames) {
   if (!res.ok) throw new Error(`Mağaza listesi alınamadı: ${res.status}`);
   const shops = await res.json();
 
-  // ITAD bazı sürümlerde "title", bazılarında "name" alanı kullanıyor —
-  // ikisini de destekliyoruz, ayrıca eksik/bozuk kayıtları sessizce atlıyoruz.
   const found = {};
   for (const wanted of shopNames) {
     const match = shops.find((s) => {
@@ -20,6 +18,29 @@ async function resolveShopIds(apiKey, shopNames) {
     if (match) found[wanted] = match.id;
   }
   return found;
+}
+
+// ITAD'ın deals/v2 yanıtındaki "url" alanı gerçek Steam linki DEĞİL, ITAD'ın
+// kendi kısaltma linki (itad.link/...). Gerçek Steam appid'sini almak için
+// ayrı bir lookup endpoint'i kullanıyoruz: ITAD game ID -> Steam appid.
+async function resolveSteamAppIds(apiKey, steamShopId, gids) {
+  if (!steamShopId || gids.length === 0) return {};
+
+  const url = `${ITAD_BASE}/lookup/shop/${steamShopId}/id/v1?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(gids),
+  });
+  if (!res.ok) return {};
+
+  const data = await res.json(); // { "<itad-gid>": ["app/220", ...], ... }
+  const map = {};
+  for (const [gid, ids] of Object.entries(data || {})) {
+    const appEntry = (ids || []).find((s) => s.startsWith("app/"));
+    if (appEntry) map[gid] = appEntry.split("/")[1];
+  }
+  return map;
 }
 
 /**
@@ -56,8 +77,20 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
   const data = await res.json();
   const list = data.list || data.deals || [];
 
-  return list
-    .filter((deal) => (deal.deal?.cut ?? deal.cut ?? 0) >= minDiscountPercent)
+  const filtered = list.filter((deal) => (deal.deal?.cut ?? deal.cut ?? 0) >= minDiscountPercent);
+
+  // Steam appid'lerini toplu olarak çözümle (inceleme puanı filtresi için gerekli)
+  const steamGids = [
+    ...new Set(
+      filtered
+        .filter((deal) => (deal.deal?.shop?.id ?? deal.shop?.id) === shopIds["Steam"])
+        .map((deal) => deal.id)
+        .filter(Boolean)
+    ),
+  ];
+  const appIdMap = await resolveSteamAppIds(apiKey, shopIds["Steam"], steamGids);
+
+  return filtered
     .map((deal) => {
       const shopId = deal.deal?.shop?.id ?? deal.shop?.id;
       return {
@@ -70,6 +103,7 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
         currency: deal.deal?.price?.currency ?? deal.price?.currency ?? "USD",
         coverUrl: deal.assets?.banner600 || deal.assets?.boxart || deal.image,
         storeUrl: deal.deal?.url ?? deal.urls?.game,
+        appid: appIdMap[deal.id] || null,
       };
     })
     .filter((d) => d.title && d.coverUrl);
