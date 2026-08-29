@@ -5,13 +5,19 @@ import fetch from "node-fetch";
 // "Positive"        -> Olumlu
 const ALLOWED_SCORES = new Set(["Very Positive", "Positive"]);
 
+// Yorum sayısı çok düşük olan oyunlar (genelde "asset flip" / seri üretim
+// shovelware) Steam'in puanlama sisteminde bile "Olumlu" görünebiliyor,
+// çünkü sadece birkaç kişi oy vermiş olabilir. Bunu elemek için minimum
+// toplam yorum sayısı şartı ekliyoruz.
+const MIN_REVIEW_COUNT = 100;
+
 const cache = new Map();
 
-// Not: appid artık dealsFetcher.js tarafından ITAD'ın lookup endpoint'i
-// üzerinden önceden çözümlenip deal.appid alanına konuyor (storeUrl, ITAD'ın
-// kendi kısaltma linki olduğu için oradan appid çıkarmak güvenilir değildi).
+// Not: appid dealsFetcher.js tarafından ITAD'ın lookup endpoint'i üzerinden
+// önceden çözümlenip deal.appid alanına konuyor (storeUrl, ITAD'ın kendi
+// kısaltma linki olduğu için oradan appid çıkarmak güvenilir değildi).
 
-async function fetchReviewScoreDesc(appid) {
+async function fetchReviewSummary(appid) {
   if (cache.has(appid)) return cache.get(appid);
 
   const url = `https://store.steampowered.com/appreviews/${appid}?json=1&language=all&num_per_page=0&l=english`;
@@ -21,14 +27,18 @@ async function fetchReviewScoreDesc(appid) {
     return null;
   }
   const data = await res.json();
-  const desc = data?.query_summary?.review_score_desc ?? null;
-  cache.set(appid, desc);
-  return desc;
+  const summary = data?.query_summary ?? null;
+  const result = summary
+    ? { desc: summary.review_score_desc, total: summary.total_reviews ?? 0 }
+    : null;
+  cache.set(appid, result);
+  return result;
 }
 
 /**
- * Verilen deal listesindeki Steam öğelerini inceleme puanına göre filtreler
- * (sadece "Positive" / "Very Positive" geçer). Steam DIŞINDAKİ (örn. PS Store)
+ * Verilen deal listesindeki Steam öğelerini inceleme puanına VE yorum
+ * sayısına göre filtreler (sadece "Positive"/"Very Positive" VE en az
+ * MIN_REVIEW_COUNT yorumu olanlar geçer). Steam DIŞINDAKİ (örn. PS Store)
  * öğeler dokunulmadan olduğu gibi geri döner.
  */
 export async function filterSteamDealsByReview(deals, { concurrency = 5 } = {}) {
@@ -42,8 +52,11 @@ export async function filterSteamDealsByReview(deals, { concurrency = 5 } = {}) 
       batch.map(async (deal) => {
         const appid = deal.appid;
         if (!appid) return null; // appid çözümlenemediyse güvenli tarafta kal, dahil etme
-        const scoreDesc = await fetchReviewScoreDesc(appid);
-        return ALLOWED_SCORES.has(scoreDesc) ? deal : null;
+        const summary = await fetchReviewSummary(appid);
+        if (!summary) return null;
+        const passesScore = ALLOWED_SCORES.has(summary.desc);
+        const passesCount = summary.total >= MIN_REVIEW_COUNT;
+        return passesScore && passesCount ? deal : null;
       })
     );
     results.push(...batchResults.filter(Boolean));
