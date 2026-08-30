@@ -27,27 +27,36 @@ async function run() {
 
   const notified = loadNotifiedIds();
 
+  // Artık indirimde OLMAYAN oyunları state'ten temizliyoruz. Böylece bir oyun
+  // indirimi bitip aylar sonra tekrar indirime girdiğinde "zaten gönderilmişti"
+  // diye sonsuza kadar susturulmaz — sadece indirim KESİNTİSİZ sürdüğü sürece
+  // tekrar gönderilmez.
+  const currentlyActiveIds = new Set(rawDeals.map((d) => d.id));
+  const prunedNotified = new Set([...notified].filter((id) => currentlyActiveIds.has(id)));
+
   const fresh = deals
-    .filter((d) => !notified.has(d.id))
+    .filter((d) => !prunedNotified.has(d.id))
     // Öne çıkan (en çok yorum alan / en popüler) oyunlar önce gelsin —
     // PS Store öğelerinde reviewCount olmadığı için onlar sona düşer, sorun değil.
     .sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0));
 
   if (fresh.length === 0) {
     console.log("Yeni (daha önce haber verilmemiş) indirim yok. Çıkılıyor.");
+    saveNotifiedIds(prunedNotified); // temizlik (pruning) yine de kalıcı olsun
     return;
   }
 
   // Bir çalıştırmada en fazla en popüler MAX_PER_RUN kadarını gönderiyoruz
-  // (fresh zaten popülerliğe göre sıralı).
+  // (fresh zaten popülerliğe göre sıralı). Gönderilmeyenler "notified"
+  // sayılmıyor ki sırası gelince (bir sonraki çalıştırmada) hâlâ gönderilebilsin.
   const MAX_PER_RUN = 15;
   const toSend = fresh.slice(0, MAX_PER_RUN);
 
   console.log(`${fresh.length} yeni indirim bulundu, en popüler ${toSend.length} tanesi Telegram'a gönderiliyor...`);
   await sendDealDigest(toSend);
 
-  fresh.forEach((d) => notified.add(d.id));
-  saveNotifiedIds(notified);
+  toSend.forEach((d) => prunedNotified.add(d.id));
+  saveNotifiedIds(prunedNotified);
   console.log("Tamamlandı.");
 }
 
