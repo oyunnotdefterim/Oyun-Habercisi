@@ -27,15 +27,24 @@ async function run() {
 
   const notified = loadNotifiedIds();
 
-  const fresh = deals.filter((d) => !notified.has(d.id));
+  const fresh = deals
+    .filter((d) => !notified.has(d.id))
+    // Öne çıkan (en çok yorum alan / en popüler) oyunlar önce gelsin —
+    // PS Store öğelerinde reviewCount olmadığı için onlar sona düşer, sorun değil.
+    .sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0));
 
   if (fresh.length === 0) {
     console.log("Yeni (daha önce haber verilmemiş) indirim yok. Çıkılıyor.");
     return;
   }
 
-  console.log(`${fresh.length} yeni indirim bulundu, Telegram'a gönderiliyor...`);
-  await sendDealDigest(fresh);
+  // Bir çalıştırmada en fazla en popüler MAX_PER_RUN kadarını gönderiyoruz
+  // (fresh zaten popülerliğe göre sıralı).
+  const MAX_PER_RUN = 15;
+  const toSend = fresh.slice(0, MAX_PER_RUN);
+
+  console.log(`${fresh.length} yeni indirim bulundu, en popüler ${toSend.length} tanesi Telegram'a gönderiliyor...`);
+  await sendDealDigest(toSend);
 
   fresh.forEach((d) => notified.add(d.id));
   saveNotifiedIds(notified);

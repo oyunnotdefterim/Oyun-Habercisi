@@ -56,11 +56,16 @@ export async function filterSteamDealsByReview(deals, { concurrency = 5 } = {}) 
         if (!summary) return null;
         const passesScore = ALLOWED_SCORES.has(summary.desc);
         const passesCount = summary.total >= MIN_REVIEW_COUNT;
-        return passesScore && passesCount ? deal : null;
+        // reviewCount'u dealin üzerine ekliyoruz ki sonrasında popülerliğe göre
+        // (en çok yorum alandan aza doğru) sıralayabilelim.
+        return passesScore && passesCount ? { ...deal, reviewCount: summary.total } : null;
       })
     );
     results.push(...batchResults.filter(Boolean));
   }
+
+  // En çok yorumu olan (yani en tanınmış/öne çıkan) oyunlar önce gelsin.
+  results.sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0));
 
   return [...results, ...otherDeals];
 }
