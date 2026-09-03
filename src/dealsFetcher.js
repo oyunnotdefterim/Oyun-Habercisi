@@ -1,4 +1,5 @@
 import fetch from "node-fetch";
+import { fetchSteamFeaturedSpecials } from "./steamFeatured.js";
 
 const ITAD_BASE = "https://api.isthereanydeal.com";
 
@@ -34,7 +35,7 @@ async function resolveSteamAppIds(apiKey, steamShopId, gids) {
   });
   if (!res.ok) return {};
 
-  const data = await res.json(); // { "<itad-gid>": ["app/220", ...], ... }
+  const data = await res.json();
   const map = {};
   for (const [gid, ids] of Object.entries(data || {})) {
     const appEntry = (ids || []).find((s) => s.startsWith("app/"));
@@ -58,14 +59,8 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
   };
   const shopIdList = Object.values(shopIds).filter(Boolean);
 
-  // /deals/v2 GET isteğinde query parametrelerini desteklemiyor (400 döner) —
-  // ITAD bu endpoint için POST + JSON gövde istiyor.
-  // Tek sayfa (limit=100) yeterli olmuyor: yüksek yüzdeli küçük/az bilinen
-  // oyunlar ilk 100'ü doldurup, %90 gibi daha "makul" ama yine de büyük
-  // indirimdeki tanınmış oyunları (ör. Hogwarts Legacy) dışarıda bırakabiliyor.
-  // Bu yüzden birkaç sayfa art arda çekiyoruz.
   const PAGE_SIZE = 200;
-  const MAX_PAGES = 10; // toplamda en fazla 600 sonuç
+  const MAX_PAGES = 10;
   const url = `${ITAD_BASE}/deals/v2?key=${apiKey}`;
 
   let list = [];
@@ -73,14 +68,10 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+      body: JSON.stringify({
         country: "US",
         offset: page * PAGE_SIZE,
         limit: PAGE_SIZE,
-        // Not: sort: '-cut' KASITLI OLARAK kaldırıldı — en yüksek indirim
-        // yüzdesine göre sıralamak, %90+ indirimli (çoğu düşük kaliteli)
-        // oyunları hep öne alıp %20-50 gibi daha ılımlı indirimli, kaliteli
-        // oyunları sayfalama sınırının dışına itiyordu.
         shops: shopIdList,
       }),
     });
@@ -90,12 +81,11 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
     const pageList = data.list || data.deals || [];
     list = list.concat(pageList);
 
-    if (pageList.length < PAGE_SIZE) break; // son sayfaya ulaştık
+    if (pageList.length < PAGE_SIZE) break;
   }
 
   const filtered = list.filter((deal) => (deal.deal?.cut ?? deal.cut ?? 0) >= minDiscountPercent);
 
-  // Steam appid'lerini toplu olarak çözümle (inceleme puanı filtresi için gerekli)
   const steamGids = [
     ...new Set(
       filtered
@@ -106,21 +96,37 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
   ];
   const appIdMap = await resolveSteamAppIds(apiKey, shopIds["Steam"], steamGids);
 
-  return filtered
+  const itadDeals = filtered
     .map((deal) => {
       const shopId = deal.deal?.shop?.id ?? deal.shop?.id;
+      const platform = idToPlatform[shopId] || "Mağaza";
+      const appid = appIdMap[deal.id] || null;
+      const id =
+        platform === "Steam" && appid ? `steam-${appid}` : `${deal.id ?? deal.slug ?? deal.title}-${shopId}`;
       return {
-        id: `${deal.id ?? deal.slug ?? deal.title}-${shopId}`,
+        id,
         type: "discount",
         title: deal.title,
-        platform: idToPlatform[shopId] || "Mağaza",
+        platform,
         discountPercent: deal.deal?.cut ?? deal.cut,
         price: deal.deal?.price?.amount ?? deal.price?.amount,
         currency: deal.deal?.price?.currency ?? deal.price?.currency ?? "USD",
         coverUrl: deal.assets?.banner600 || deal.assets?.boxart || deal.image,
         storeUrl: deal.deal?.url ?? deal.urls?.game,
-        appid: appIdMap[deal.id] || null,
+        appid,
       };
     })
     .filter((d) => d.title && d.coverUrl);
+
+  const nativeDeals = await fetchSteamFeaturedSpecials().catch(() => []);
+
+  const merged = new Map();
+  for (const d of itadDeals) merged.set(d.id, d);
+  for (const d of nativeDeals) {
+    if (d.discountPercent >= minDiscountPercent && !merged.has(d.id)) {
+      merged.set(d.id, d);
+    }
+  }
+
+  return [...merged.values()];
 }
