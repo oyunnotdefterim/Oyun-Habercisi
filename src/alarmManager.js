@@ -98,15 +98,20 @@ export async function checkAndFireAlarms(rawDeals) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN tanımlı değil.");
 
-  const alarms = loadJson(ALARMS_PATH, {});
+    const alarms = loadJson(ALARMS_PATH, {});
   const alarmKeys = Object.keys(alarms);
+  console.log(`Aktif alarmlar: ${alarmKeys.length > 0 ? alarmKeys.join(', ') : '(yok)'}`);
   if (alarmKeys.length === 0) return;
 
   const keysToDelete = [];
 
-  for (const key of alarmKeys) {
+    for (const key of alarmKeys) {
     const match = rawDeals.find((d) => normalize(d.title).includes(key));
-    if (!match) continue;
+    if (!match) {
+      console.log(`Alarm '${key}' için şu an eşleşen bir indirim yok.`);
+      continue;
+    }
+    console.log(`Alarm '${key}' eşleşti: ${match.title} (%${match.discountPercent})`);
 
     const price = match.price ? `${match.price}${match.currency === "USD" ? "$" : " " + match.currency}` : "?";
     const text =

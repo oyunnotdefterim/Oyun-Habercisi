@@ -73,11 +73,14 @@ export async function fetchBigDiscounts(minDiscountPercent = 1) {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+            body: JSON.stringify({
         country: "US",
         offset: page * PAGE_SIZE,
         limit: PAGE_SIZE,
-        sort: "-cut",
+        // Not: sort: '-cut' KASITLI OLARAK kaldırıldı — en yüksek indirim
+        // yüzdesine göre sıralamak, %90+ indirimli (çoğu düşük kaliteli)
+        // oyunları hep öne alıp %20-50 gibi daha ılımlı indirimli, kaliteli
+        // oyunları sayfalama sınırının dışına itiyordu.
         shops: shopIdList,
       }),
     });
