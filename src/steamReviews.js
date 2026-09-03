@@ -9,7 +9,7 @@ const ALLOWED_SCORES = new Set(["Very Positive", "Positive"]);
 // shovelware) Steam'in puanlama sisteminde bile "Olumlu" görünebiliyor,
 // çünkü sadece birkaç kişi oy vermiş olabilir. Bunu elemek için minimum
 // toplam yorum sayısı şartı ekliyoruz.
-const MIN_REVIEW_COUNT = 5000;
+const MIN_REVIEW_COUNT = 2000;
 
 const cache = new Map();
 
