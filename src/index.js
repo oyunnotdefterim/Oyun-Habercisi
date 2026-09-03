@@ -3,9 +3,9 @@ import path from "node:path";
 import { fetchBigDiscounts } from "./dealsFetcher.js";
 import { filterSteamDealsByReview } from "./steamReviews.js";
 import { sendDealDigest } from "./telegramNotifier.js";
+import { pollAlarmCommands, checkAndFireAlarms } from "./alarmManager.js";
 
 const POSTED_PATH = path.join(process.cwd(), "data", "posted.json");
-// "Tüm indirimler" istendiği için eşiği 1 tutuyoruz (yani indirimde olan her şey).
 const MIN_DISCOUNT = Number(process.env.MIN_DISCOUNT_PERCENT || 1);
 
 function loadNotifiedIds() {
@@ -18,8 +18,13 @@ function saveNotifiedIds(idsSet) {
 }
 
 async function run() {
+  console.log("Yeni /alarm komutları kontrol ediliyor...");
+  await pollAlarmCommands();
+
   console.log(`Steam + PS Store'da %${MIN_DISCOUNT}+ indirimler taranıyor...`);
   const rawDeals = await fetchBigDiscounts(MIN_DISCOUNT);
+
+  await checkAndFireAlarms(rawDeals);
 
   console.log(`${rawDeals.length} indirim bulundu, Steam olanlar inceleme puanına göre filtreleniyor (Olumlu / Çok Olumlu)...`);
   const deals = await filterSteamDealsByReview(rawDeals);
@@ -27,29 +32,20 @@ async function run() {
 
   const notified = loadNotifiedIds();
 
-  // Artık indirimde OLMAYAN oyunları state'ten temizliyoruz. Böylece bir oyun
-  // indirimi bitip aylar sonra tekrar indirime girdiğinde "zaten gönderilmişti"
-  // diye sonsuza kadar susturulmaz — sadece indirim KESİNTİSİZ sürdüğü sürece
-  // tekrar gönderilmez.
   const currentlyActiveIds = new Set(rawDeals.map((d) => d.id));
   const prunedNotified = new Set([...notified].filter((id) => currentlyActiveIds.has(id)));
 
   const fresh = deals
     .filter((d) => !prunedNotified.has(d.id))
-    // Öne çıkan (en çok yorum alan / en popüler) oyunlar önce gelsin —
-    // PS Store öğelerinde reviewCount olmadığı için onlar sona düşer, sorun değil.
     .sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0));
 
   if (fresh.length === 0) {
     console.log("Yeni (daha önce haber verilmemiş) indirim yok. Çıkılıyor.");
-    saveNotifiedIds(prunedNotified); // temizlik (pruning) yine de kalıcı olsun
+    saveNotifiedIds(prunedNotified);
     return;
   }
 
-  // Bir çalıştırmada en fazla en popüler MAX_PER_RUN kadarını gönderiyoruz
-  // (fresh zaten popülerliğe göre sıralı). Gönderilmeyenler "notified"
-  // sayılmıyor ki sırası gelince (bir sonraki çalıştırmada) hâlâ gönderilebilsin.
-  const MAX_PER_RUN = 15;
+  const MAX_PER_RUN = 40;
   const toSend = fresh.slice(0, MAX_PER_RUN);
 
   console.log(`${fresh.length} yeni indirim bulundu, en popüler ${toSend.length} tanesi Telegram'a gönderiliyor...`);

@@ -3,10 +3,31 @@ import fetch from "node-fetch";
 const TELEGRAM_MAX_CHARS = 3500; // Telegram limiti 4096, güvenlik payı bırakıyoruz
 
 /**
+ * Tek bir Telegram mesajı gönderir (uzun mesajlar otomatik bölünmez —
+ * onu çağıran taraf hallediyor). alarmManager.js ve bu dosyanın kendisi
+ * tarafından ortak kullanılıyor.
+ */
+export async function sendTelegramMessage(token, chatId, text) {
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      disable_web_page_preview: true,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    throw new Error(`Telegram gönderim hatası: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+/**
  * Bir grup indirimi tek (veya gerekirse birkaç parçaya bölünmüş) Telegram
- * mesajı olarak gönderir. Tek tek mesaj yerine "özet" mesajlar kullanıyoruz,
- * çünkü "tüm indirimler" seçildiğinde tek seferde onlarca-yüzlerce oyun
- * çıkabilir; her biri için ayrı mesaj atmak hem Telegram'ı hem seni spam'e boğar.
+ * mesajı olarak ana kanal/sohbete gönderir.
  */
 export async function sendDealDigest(deals) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -47,22 +68,4 @@ function chunkLines(lines, maxChars) {
   }
   if (current.length > 0) chunks.push(current);
   return chunks;
-}
-
-async function sendTelegramMessage(token, chatId, text) {
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      disable_web_page_preview: true,
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    throw new Error(`Telegram gönderim hatası: ${JSON.stringify(data)}`);
-  }
-  return data;
 }
