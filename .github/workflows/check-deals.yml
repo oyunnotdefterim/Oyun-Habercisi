@@ -3,7 +3,7 @@ name: Steam Deal Notifier
 on:
   schedule:
     # Her 3 saatte bir çalışır (UTC saatine göre). Sıklığı burada değiştirebilirsin.
-    - cron: "0 */3 * * *"
+        - cron: "*/15 * * * *"
   workflow_dispatch: {} # Manuel "Run workflow" butonuyla da tetikleyebilirsin
 
 permissions:
